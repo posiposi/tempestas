@@ -58,6 +58,15 @@ paths:
               example:
                 code: UPSTREAM_ERROR
                 message: failed to fetch forecast
+        '500':
+          description: 内部サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: internal server error
 
 components:
   schemas:
@@ -123,6 +132,6 @@ components:
       properties:
         code:
           type: string
-          enum: [INVALID_LOCATION, INVALID_DATE, UPSTREAM_ERROR]
+          enum: [INVALID_LOCATION, INVALID_DATE, UPSTREAM_ERROR, INTERNAL_ERROR]
         message:
           type: string
