@@ -50,7 +50,7 @@ paths:
                     code: INVALID_DATE
                     message: date must be between today and 6 days later (JST)
         '502':
-          description: 外部天気APIの失敗
+          description: 外部天気APIの失敗（応答に必要な値が欠けている場合を含む）
           content:
             application/json:
               schema:
