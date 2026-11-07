@@ -1,0 +1,128 @@
+openapi: 3.2.1
+info:
+  title: tempestas API
+  version: 0.1.0
+  description: 地域・日付を指定して天気予報を返すAPI。
+servers:
+  - url: http://localhost:8080
+    description: ローカル
+
+paths:
+  /weather:
+    get:
+      operationId: getWeather
+      summary: 指定した地域・日付の天気予報を取得する
+      parameters:
+        - name: location
+          in: query
+          required: true
+          description: 地域コード。予報地点は各市役所（東京は都庁）。
+          schema:
+            $ref: '#/components/schemas/Location'
+        - name: date
+          in: query
+          required: false
+          description: 予報日（JST）。省略時は当日。当日〜6日後まで指定できる。
+          example: '2026-11-07'
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 天気予報情報の取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forecast'
+        '400':
+          description: リクエストが不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidLocation:
+                  value:
+                    code: INVALID_LOCATION
+                    message: unsupported location
+                invalidDate:
+                  value:
+                    code: INVALID_DATE
+                    message: date must be between today and 6 days later (JST)
+        '502':
+          description: 外部天気APIの失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UPSTREAM_ERROR
+                message: failed to fetch forecast
+
+components:
+  schemas:
+    Location:
+      type: string
+      enum: [sapporo, tokyo, nagoya, osaka, fukuoka]
+
+    Weather:
+      type: string
+      description: |
+        天気区分。Open-Meteo の WMO weather code から変換する。
+
+        | 値 | WMO code |
+        |---|---|
+        | `clear` | 0 |
+        | `cloudy` | 1, 2, 3 |
+        | `fog` | 45, 48 |
+        | `rain` | 51–67, 80–82 |
+        | `snow` | 71–77, 85, 86 |
+        | `thunderstorm` | 95, 96, 99 |
+      enum: [clear, cloudy, fog, rain, snow, thunderstorm]
+
+    Forecast:
+      type: object
+      required: [location, date, weather, temperature, precipitationProbability]
+      properties:
+        location:
+          $ref: '#/components/schemas/Location'
+        date:
+          type: string
+          format: date
+          description: 予報日（JST）
+        weather:
+          $ref: '#/components/schemas/Weather'
+        temperature:
+          type: object
+          description: 気温（℃）
+          required: [max, min]
+          properties:
+            max:
+              type: number
+              description: 最高気温
+            min:
+              type: number
+              description: 最低気温
+        precipitationProbability:
+          type: integer
+          description: 最大降水確率（%）
+          minimum: 0
+          maximum: 100
+      examples:
+        - location: tokyo
+          date: '2026-11-07'
+          weather: clear
+          temperature:
+            max: 18.2
+            min: 9.5
+          precipitationProbability: 10
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [INVALID_LOCATION, INVALID_DATE, UPSTREAM_ERROR]
+        message:
+          type: string

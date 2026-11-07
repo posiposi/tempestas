@@ -49,7 +49,7 @@ tempestas は、地域・日付を指定して天気予報を返すサーバー�
 ## コマンド（予定）
 
 ```sh
-docker compose up              # DynamoDB Local を起動
+docker compose up -d           # Swagger UI（http://localhost:8081、api/openapi.yaml を表示）と DynamoDB Local（予定）を起動
 make run                       # cmd/local のHTTPサーバーをローカルで起動
 make build                     # GOOS=linux GOARCH=arm64 で bootstrap バイナリを生成（Lambda provided.al2023 用）
 go test ./...                  # 全テスト
