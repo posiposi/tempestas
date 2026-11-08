@@ -49,15 +49,6 @@ paths:
                   value:
                     code: INVALID_DATE
                     message: date must be between today and 6 days later (JST)
-        '502':
-          description: 外部天気APIの失敗（応答に必要な値が欠けている場合を含む）
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: BAD_GATEWAY
-                message: failed to fetch forecast
         '500':
           description: 内部サーバーエラー
           content:
@@ -67,6 +58,15 @@ paths:
               example:
                 code: INTERNAL_SERVER_ERROR
                 message: internal server error
+        '502':
+          description: 外部天気APIの失敗（応答に必要な値が欠けている場合を含む）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: BAD_GATEWAY
+                message: failed to fetch forecast
 
 components:
   schemas:
