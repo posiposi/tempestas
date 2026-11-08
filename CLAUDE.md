@@ -80,6 +80,7 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 
 ### インフラ / CI
 
+- リージョンは東京（`ap-northeast-1`）。ローカルから AWS への認証は IAM Identity Center（SSO）のプロファイルを使い、IAM ユーザーのアクセスキーは使わない。
 - Lambda は `provided.al2023` / arm64、API Gateway は HTTP API（REST APIではない）、DynamoDB はオンデマンド課金。
 - Terraform の state は S3 backend に置き、`use_lockfile` でロックする（DynamoDBのロックテーブルは使わない）。`terraform/bootstrap` で state 用のバケットを作り、`terraform/envs/dev` で環境を構築する。モジュールへの分割は通知フローを追加するときまで行わない。
 - GitHub Actions から AWS への認証は OIDC で行い、長期のアクセスキーは使わない。PRでは lint・テスト・`terraform fmt -check`/`validate`/`plan` を実行し、main へのマージ時にビルドと `apply` を実行する。
