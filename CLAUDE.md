@@ -60,6 +60,11 @@ terraform -chdir=terraform/envs/dev fmt -check && terraform -chdir=terraform/env
 
 DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため、Docker が起動している必要がある。
 
+### ツールのバージョン
+
+- **Go 1.27.3:** ローカルの Go は使わず、Docker のコンテナ（Go 1.27.3）の中でビルド・テスト・lint を行う。上記の `go` / `make` / `golangci-lint` のコマンドは、コンテナの中で実行する想定。
+- **Terraform 1.17.1:** ローカルにインストールしたものを使う。
+
 ## アーキテクチャ
 
 クリーンアーキテクチャ風のレイヤー構成。依存の向きは `adapter → usecase → domain`。
@@ -81,6 +86,7 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 ### インフラ / CI
 
 - リージョンは東京（`ap-northeast-1`）。ローカルから AWS への認証は IAM Identity Center（SSO）のプロファイルを使い、IAM ユーザーのアクセスキーは使わない。
+- ほかのリソースと区別するため、Terraform で作るリソースにはすべて `Project = tempestas` のタグを付ける（provider の `default_tags` で設定する）。
 - Lambda は `provided.al2023` / arm64、API Gateway は HTTP API（REST APIではない）、DynamoDB はオンデマンド課金。
 - Terraform の state は S3 backend に置き、`use_lockfile` でロックする（DynamoDBのロックテーブルは使わない）。`terraform/bootstrap` で state 用のバケットを作り、`terraform/envs/dev` で環境を構築する。モジュールへの分割は通知フローを追加するときまで行わない。
 - GitHub Actions から AWS への認証は OIDC で行い、長期のアクセスキーは使わない。PRでは lint・テスト・`terraform fmt -check`/`validate`/`plan` を実行し、main へのマージ時にビルドと `apply` を実行する。
