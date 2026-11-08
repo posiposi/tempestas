@@ -49,7 +49,7 @@ tempestas は、地域・日付を指定して天気予報を返すサーバー�
 ## コマンド（予定）
 
 ```sh
-docker compose up              # DynamoDB Local を起動
+docker compose up -d           # Swagger UI（http://localhost:8081、api/openapi.yaml を表示）と DynamoDB Local（予定）を起動
 make run                       # cmd/local のHTTPサーバーをローカルで起動
 make build                     # GOOS=linux GOARCH=arm64 で bootstrap バイナリを生成（Lambda provided.al2023 用）
 go test ./...                  # 全テスト
@@ -66,7 +66,7 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 
 - `internal/domain` — 値オブジェクト `Location`（固定リストにある地域コードのみ有効）と `ForecastDate`（YYYY-MM-DD、JSTの当日〜6日後のみ有効）、エンティティ `Forecast`。入力のバリデーションはここに置く。緯度経度ではなく地域コードで受け付けるのは、地域を値オブジェクトとしてドメインに閉じ込めるため。
 - `internal/usecase` — `GetWeather` ユースケース。ポートとして `WeatherFetcher`（外部API）と `ForecastRepository`（キャッシュ）のインターフェースを定義する。処理の流れは、キャッシュにあれば返し、なければ外部APIから取得して保存してから返す。ユニットテストではポートをモックにする（TDDで進める）。
-- `internal/adapter/handler` — 標準 `net/http` のハンドラ。HTTPフレームワークは使わない。エラーの対応は、ドメインのバリデーションエラーを 400（`INVALID_LOCATION` / `INVALID_DATE`）、外部APIの失敗を 502（`UPSTREAM_ERROR`）とする。
+- `internal/adapter/handler` — 標準 `net/http` のハンドラ。HTTPフレームワークは使わない。エラーの対応は、ドメインのバリデーションエラーを 400（`INVALID_LOCATION` / `INVALID_DATE`）、外部APIの失敗（気温・降水確率など必要な値が `null` の場合を含む）を 502（`BAD_GATEWAY`）、キャッシュ（DynamoDB）の読み書きの失敗などそれ以外のエラーを 500（`INTERNAL_SERVER_ERROR`）とする。
 - `internal/adapter/openmeteo` — Open-Meteo（APIキー不要）のクライアント。タイムアウトを必ず設定する。テストには `httptest` を使う。
 - `internal/adapter/dynamodb` — `aws-sdk-go-v2` で実装するリポジトリ。
 - `cmd/api`（Lambdaエントリポイント）と `cmd/local`（ローカル用HTTPサーバー）は、**同じ `http.Handler`** を使う。Lambda では `aws-lambda-go-api-proxy` で包む。Lambda 専用のロジックをハンドラに入れないこと。
@@ -80,6 +80,7 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 
 ### インフラ / CI
 
+- リージョンは東京（`ap-northeast-1`）。ローカルから AWS への認証は IAM Identity Center（SSO）のプロファイルを使い、IAM ユーザーのアクセスキーは使わない。
 - Lambda は `provided.al2023` / arm64、API Gateway は HTTP API（REST APIではない）、DynamoDB はオンデマンド課金。
 - Terraform の state は S3 backend に置き、`use_lockfile` でロックする（DynamoDBのロックテーブルは使わない）。`terraform/bootstrap` で state 用のバケットを作り、`terraform/envs/dev` で環境を構築する。モジュールへの分割は通知フローを追加するときまで行わない。
 - GitHub Actions から AWS への認証は OIDC で行い、長期のアクセスキーは使わない。PRでは lint・テスト・`terraform fmt -check`/`validate`/`plan` を実行し、main へのマージ時にビルドと `apply` を実行する。
