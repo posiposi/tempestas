@@ -10,7 +10,7 @@ tempestas は、地域・日付を指定して天気予報を返すサーバー�
 
 - **MVPは `GET /weather` のみ。** 購読API、EventBridge Scheduler、SQS、通知Lambda、Slack連携は次のフェーズで扱うため、頼まれない限り実装しない。
 - 進め方はウォーキングスケルトン方式（下記「進め方」の Step 1〜7）。まず Hello World を本番環境までデプロイし、IAM・ビルド・デプロイの経路を確立してから中身を足す。
-- 現時点ではリポジトリにコードがない。下記のコマンドや構成は計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
+- 現時点では `cmd/api`（固定のJSONを返す Hello World の Lambda）と `internal/adapter/handler` のみ実装済み。下記のコマンドや構成のうち未実装のものは計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
 
 ## 進め方
 
@@ -62,7 +62,7 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 
 ### ツールのバージョン
 
-- **Go 1.27.3:** ローカルの Go は使わず、Docker のコンテナ（Go 1.27.3）の中でビルド・テスト・lint を行う。上記の `go` / `make` / `golangci-lint` のコマンドは、コンテナの中で実行する想定。
+- **Go 1.27.3:** ローカルの Go は gopls などエディタ用にだけ使い、ビルド・テスト・lint は Docker のコンテナ（Go 1.27.3）の中で行う。上記の `go` / `make` / `golangci-lint` のコマンドは、コンテナの中で実行する想定。開発用コンテナは `docker-compose.yml` の `app` サービス（profile `tools` のため `docker compose up` では起動しない）で、`docker compose run --rm app go build ./...` のように使う。
 - **Terraform 1.17.1:** ローカルにインストールしたものを使う。
 
 ## アーキテクチャ
