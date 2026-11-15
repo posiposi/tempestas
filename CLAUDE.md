@@ -85,7 +85,7 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 クリーンアーキテクチャ風のレイヤー構成。依存の向きは `adapter → usecase → domain`。
 
 - `internal/domain` — 値オブジェクト `Location`（固定リストにある地域コードのみ有効）と `ForecastDate`（YYYY-MM-DD、JSTの当日〜6日後のみ有効）、エンティティ `Forecast`。入力のバリデーションはここに置く。緯度経度ではなく地域コードで受け付けるのは、地域を値オブジェクトとしてドメインに閉じ込めるため。
-- `internal/usecase` — `GetWeather` ユースケース。ポートとして `WeatherFetcher`（外部API）と `ForecastRepository`（キャッシュ）のインターフェースを定義する。処理の流れは、キャッシュにあれば返し、なければ外部APIから取得して保存してから返す。ユニットテストではポートをモックにする（TDDで進める）。
+- `internal/usecase` — `GetWeather` ユースケース。ポートとして `WeatherFetcher`（外部API）と `ForecastRepository`（キャッシュ）のインターフェースを定義する。処理の流れは、キャッシュにあれば返し、なければ外部APIから取得して保存してから返す。次のフェーズの取得Lambda（EventBridge Scheduler から起動）も、地域ごとの予報をこの `GetWeather` で取得する（キャッシュを先に見る）。そのため、ユースケースに HTTP や Lambda の入口に依存する処理を入れない。ユニットテストではポートをモックにする（TDDで進める）。
 - `internal/adapter/handler` — 標準 `net/http` のハンドラ。HTTPフレームワークは使わない。エラーの対応は、ドメインのバリデーションエラーを 400（`INVALID_LOCATION` / `INVALID_DATE`）、外部APIの失敗（気温・降水確率など必要な値が `null` の場合を含む）を 502（`BAD_GATEWAY`）、キャッシュ（DynamoDB）の読み書きの失敗などそれ以外のエラーを 500（`INTERNAL_SERVER_ERROR`）とする。
 - `internal/adapter/openmeteo` — Open-Meteo（APIキー不要）のクライアント。タイムアウトを必ず設定する。テストには `httptest` を使う。
 - `internal/adapter/dynamodb` — `aws-sdk-go-v2` で実装するリポジトリ。
