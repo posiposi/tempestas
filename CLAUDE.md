@@ -10,7 +10,7 @@ tempestas は、地域・日付を指定して天気予報を返すサーバー�
 
 - **MVPは `GET /weather` のみ。** 購読API、EventBridge Scheduler、SQS、通知Lambda、Slack連携は次のフェーズで扱うため、頼まれない限り実装しない。
 - 進め方はウォーキングスケルトン方式（下記「進め方」の Step 1〜7）。まず Hello World を本番環境までデプロイし、IAM・ビルド・デプロイの経路を確立してから中身を足す。
-- 現時点ではリポジトリにコードがない。下記のコマンドや構成は計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
+- 現時点では `cmd/api`（固定のJSONを返す Hello World の Lambda）と `internal/adapter/handler` のみ実装済み。下記のコマンドや構成のうち未実装のものは計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
 
 ## 進め方
 
@@ -62,7 +62,7 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 
 ### ツールのバージョン
 
-- **Go 1.27.3:** ローカルの Go は使わず、Docker のコンテナ（Go 1.27.3）の中でビルド・テスト・lint を行う。上記の `go` / `make` / `golangci-lint` のコマンドは、コンテナの中で実行する想定。
+- **Go 1.27.3:** ローカルの Go は gopls などエディタ用にだけ使い、ビルド・テスト・lint は Docker のコンテナ（Go 1.27.3）の中で行う。上記の `go` / `make` / `golangci-lint` のコマンドは、コンテナの中で実行する想定。開発用コンテナは `docker-compose.yml` の `app` サービス（profile `tools` のため `docker compose up` では起動しない）で、`docker compose run --rm app go build ./...` のように使う。
 - **Terraform 1.17.1:** ローカルにインストールしたものを使う。
 
 ## アーキテクチャ
@@ -95,3 +95,13 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 ### ログ
 
 `log/slog` を使い、JSON形式で出力する（CloudWatch Logs Insights で検索できるようにするため）。
+
+### コメント（godoc）
+
+[Go Doc Comments](https://go.dev/doc/comment) と [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments#doc-comments) の慣習に従う。意味はまず名前と型で表し、コメントは名前と型で表せないことの補足に限る。
+
+- パッケージコメントは必ず書く（`// Package handler は…`）。`main` パッケージは `// Command api は…` の形にする。
+- エクスポートした識別子には doc コメントを書き、識別子名から書き始める（`// New は…`）。
+- 非公開の識別子には原則書かない。込み入ったものや、理由がコードから読み取れないもの（一時的な実装、いつ消すかなど）にだけ書く。
+- `@param` / `@return` のようなタグは使わず、文章で書く。引数や戻り値は名前でそのまま参照し、戻り値が複数で説明しにくいときは戻り値に名前を付ける。
+- 書くのは、エラーを返す条件、値の範囲や単位、`nil` やゼロ値の意味、副作用、並行に呼んでも安全かなど、使う側が知っておくべき契約。名前を言い換えるだけのコメント（`// GetWeather は天気を取得する。`）は書かない。

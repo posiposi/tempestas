@@ -7,3 +7,16 @@ services:
       SWAGGER_JSON: /spec/openapi.yaml
     volumes:
       - ./api:/spec:ro
+
+  app:
+    image: golang:1.27.3
+    profiles: ["tools"]
+    working_dir: /src
+    volumes:
+      - .:/src
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+
+volumes:
+  go-mod-cache:
+  go-build-cache:
