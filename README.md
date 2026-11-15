@@ -25,20 +25,24 @@ MVP は `GET /weather` だけを提供します。予報は Open-Meteo から取
 
 仕様は [`api/openapi.yaml`](api/openapi.yaml) にまとめています。エンドポイントやレスポンスを変えるときは、先にこのファイルを更新します。
 
-Swagger UI でも確認できます。
-
-```sh
-docker compose up -d   # http://localhost:8081
-```
-
 ## 技術選定と設計判断
 
 ### Lambda と API Gateway（HTTP API）
 
 <!-- Step 7 で、Lambda を選んだ理由を追記する -->
 
-- API Gateway は、REST API ではなく HTTP API を使います。このサービスに必要なのは Lambda との統合とスロットリングだけで、REST API にしかない機能（API キー、リクエストの検証、WAF との直接の連携など）は使わないためです。
 - Lambda は `provided.al2023` / arm64 で動かします。
+
+#### HTTP API を選んだ理由
+
+API Gateway は、REST API ではなく HTTP API を使います。
+
+- **想定する利用者が少ない：** 使うのは自分と知人程度の少人数です。REST API でしかできない、クライアントごとの利用制限（使用量プラン）や WAF の直接の連携は必要ありません。コストの上限は、ステージ全体のスロットリングで足ります。
+- **必要な機能がそろっている：** このサービスに必要なのは、Lambda との統合とスロットリングです。次のフェーズで追加する購読 API の認証も、HTTP API の JWT オーソライザーなどで対応できます。
+- **安く、設定が単純：** REST API より料金が安く、Terraform で定義するリソースも少なく済みます。
+- **力を入れたいところに集中する：** このプロジェクトの主題は、次のフェーズのイベント駆動の通知フローです。同期 API の側は単純に保ちます。
+
+あとで REST API が必要になっても、アプリの変更は小さく済みます（[レイヤー構成](#レイヤー構成)）。
 
 ### 地域を緯度経度ではなく地域コードで受け付ける
 
@@ -52,6 +56,20 @@ docker compose up -d   # http://localhost:8081
 
 - Lambda（`cmd/api`）とローカルのサーバー（`cmd/local`）は、同じ `http.Handler` を使います。Lambda 専用の処理をハンドラに入れないことで、ローカルでも本番と同じコードを動かせます。
 - 予報を取得するユースケース（`GetWeather`）は、キャッシュを先に見て、なければ Open-Meteo から取得して保存します。次のフェーズで追加する取得 Lambda も、同じユースケースを使います。
+
+#### API Gateway の種類に依存しない
+
+API Gateway が Lambda に渡すイベントの形式は、HTTP API（ペイロード形式 2.0）と REST API（1.0）で違います。この違いは、Lambda のエントリポイント（`cmd/api`）でイベントを `http.Handler` へのリクエストに変換するところに閉じ込めています。ハンドラから下（ハンドラ、ユースケース、ドメイン）は、標準の `net/http` と自前のインターフェースにだけ依存しています。
+
+そのため、REST API に切り替える場合でも、変更は次の範囲に収まります。
+
+| 変わるもの | 変わらないもの |
+|---|---|
+| `cmd/api` のイベントの変換（1行） | ハンドラ（`internal/adapter/handler`） |
+| Terraform の API Gateway の定義 | ユースケース（`GetWeather`）とそのポート |
+| | ドメイン（`Location`、`ForecastDate`、`Forecast`） |
+| | ローカルのサーバー（`cmd/local`） |
+| | API 仕様（`api/openapi.yaml`） |
 
 ### DynamoDB によるキャッシュ
 
@@ -94,23 +112,17 @@ docker compose up -d   # http://localhost:8081
     └── envs/dev/         # dev 環境（API Gateway、Lambda など）
 ```
 
-## ローカルでの開発
-
-必要なもの：Docker、make、Terraform 1.17
-
-ビルド・テスト・lint は、Docker の開発用コンテナの中で行います。
-
-## デプロイ
-
-AWS への認証は IAM Identity Center（SSO）で行います。
-
-state 用の S3 バケットは、`terraform/bootstrap` で作成済みです。別の AWS アカウントで作り直す場合は、`terraform/bootstrap/versions.tf` の `backend "s3"` をいったん外して `apply` し、作られたバケット名を `backend` に書き戻してから `terraform init -migrate-state` で state を S3 に移します。`terraform/envs/dev/versions.tf` の `backend` も、同じバケット名に書き換えます。
-
-<!-- Step 6 で、main へのマージ時に GitHub Actions がデプロイすることを追記する -->
-
 ## 今後の拡張
 
-次のフェーズで、購読者に毎朝天気を通知する仕組みを追加します（[想定完成形の構成図](#想定完成形)）。
+次のフェーズで、購読者に毎朝天気を通知する仕組みを追加します（[想定完成形の構成図](#想定完成形)）。この通知フローは、イベント駆動のアーキテクチャを実際に作って身につけることを目的にしています。
+
+予報の**取得**と**通知**は、別々の Lambda に分け、間を SQS でつなぎます。取得 Lambda は予報を集めてメッセージを送るところまで、通知 Lambda はメッセージを受け取って通知するところまでを受け持ちます。責務を分けることで、次のようにできます。
+
+- 通知に失敗しても、取得をやり直さずに済む（失敗したメッセージだけを SQS が再配信する）
+- 購読者が増えたときは、通知だけを並列に増やせる
+- 通知先（SES や Slack）を増やしたり変えたりしても、取得の処理に影響しない
+
+追加する予定のもの：
 
 - 購読の登録・解除 API（`POST /subscriptions`、`DELETE /subscriptions/{id}`）
 - EventBridge Scheduler が毎朝取得 Lambda を起動し、購読されている地域の予報を地域ごとに1回だけ取得する
