@@ -65,6 +65,7 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 
 - **Go 1.27.3:** ローカルの Go は gopls などエディタ用にだけ使い、ビルド・テスト・lint は Docker のコンテナ（Go 1.27.3）の中で行う。上記の `go` / `golangci-lint` のコマンドは、コンテナの中で実行する想定。`make` はホストで実行し、ビルドなどは Makefile の中からコンテナを呼び出す。開発用コンテナは `docker-compose.yml` の `app` サービス（profile `tools` のため `docker compose up` では起動しない）で、`docker compose run --rm app go build ./...` のように使う。
 - **Terraform 1.17.1:** ローカルにインストールしたものを使う。
+- **make / zip:** ホストに必要。`make build` は zip をホストの `zip` コマンドで作る（`golang` イメージに `zip` が入っていないため）。macOS と GitHub Actions の Ubuntu ランナーには最初から入っている。
 
 ## アーキテクチャ
 
