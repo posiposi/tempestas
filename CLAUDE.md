@@ -10,7 +10,7 @@ tempestas は、地域・日付を指定して天気予報を返すサーバー�
 
 - **MVPは `GET /weather` のみ。** 購読API、EventBridge Scheduler、SQS、通知Lambda、Slack連携は次のフェーズで扱うため、頼まれない限り実装しない。
 - 進め方はウォーキングスケルトン方式（下記「進め方」の Step 1〜7）。まず Hello World を本番環境までデプロイし、IAM・ビルド・デプロイの経路を確立してから中身を足す。
-- 現時点では `cmd/api`（固定のJSONを返す Hello World の Lambda）、`internal/adapter/handler`、`make build`、`terraform/envs/dev`（API Gateway + Lambda の定義。スロットリングは rate 5 / burst 10）のみ実装済み。下記のコマンドや構成のうち未実装のものは計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
+- 現時点では `cmd/api`（固定のJSONを返す Hello World の Lambda）、`internal/adapter/handler`、`make build`、`terraform/envs/dev`（API Gateway + Lambda の定義。スロットリングは rate 5 / burst 10）のみ実装済みで、Hello World は dev 環境にデプロイして疎通を確認済み。下記のコマンドや構成のうち未実装のものは計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
 
 ## 進め方
 
@@ -59,6 +59,19 @@ golangci-lint run              # 静的解析
 terraform -chdir=terraform/envs/dev fmt -check && terraform -chdir=terraform/envs/dev validate && terraform -chdir=terraform/envs/dev plan
 ```
 
+### デプロイ（dev 環境）
+
+`plan` / `apply` は `build/api.zip` のハッシュを読むので、先に `make build` を実行する。AWS への認証は `aws sso login` で行う（`default` プロファイルを使うので `AWS_PROFILE` の指定は不要）。
+
+```sh
+make build
+terraform -chdir=terraform/envs/dev plan
+terraform -chdir=terraform/envs/dev apply
+terraform -chdir=terraform/envs/dev output weather_url     # API の URL を表示
+curl -i <weather_url>                                       # 200 が返ることを確認
+aws logs tail /aws/lambda/tempestas-dev-api --since 30m    # Lambda のログを確認
+```
+
 DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため、Docker が起動している必要がある。
 
 ### ツールのバージョン
@@ -96,7 +109,7 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 
 ### ログ
 
-`log/slog` を使い、JSON形式で出力する（CloudWatch Logs Insights で検索できるようにするため）。
+`log/slog` を使い、JSON形式で出力する（CloudWatch Logs Insights で検索できるようにするため）。Lambda の `log_format` も `JSON` にしているので、Lambda が出す `platform.start` / `platform.report` などのログも JSON になり、アプリのログと同じ形式で検索できる。
 
 ### コメント（godoc）
 
