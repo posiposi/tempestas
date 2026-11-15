@@ -10,7 +10,7 @@ tempestas は、地域・日付を指定して天気予報を返すサーバー�
 
 - **MVPは `GET /weather` のみ。** 購読API、EventBridge Scheduler、SQS、通知Lambda、Slack連携は次のフェーズで扱うため、頼まれない限り実装しない。
 - 進め方はウォーキングスケルトン方式（下記「進め方」の Step 1〜7）。まず Hello World を本番環境までデプロイし、IAM・ビルド・デプロイの経路を確立してから中身を足す。
-- 現時点では `cmd/api`（固定のJSONを返す Hello World の Lambda）、`internal/adapter/handler`、`make build` のみ実装済み。下記のコマンドや構成のうち未実装のものは計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
+- 現時点では `cmd/api`（固定のJSONを返す Hello World の Lambda）、`internal/adapter/handler`、`make build`、`terraform/envs/dev`（API Gateway + Lambda の定義。スロットリングは rate 5 / burst 10）のみ実装済み。下記のコマンドや構成のうち未実装のものは計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
 
 ## 進め方
 
