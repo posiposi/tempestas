@@ -9,7 +9,7 @@ services:
       - ./api:/spec:ro
 
   app:
-    image: golang:1.27.3
+    build: ./docker/app
     profiles: ["tools"]
     working_dir: /src
     volumes:
