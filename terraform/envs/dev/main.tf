@@ -58,7 +58,7 @@ resource "aws_lambda_function" "api" {
   timeout          = 10
 
   logging_config {
-    log_format = "Text"
+    log_format = "JSON"
     log_group  = aws_cloudwatch_log_group.api.name
   }
 
