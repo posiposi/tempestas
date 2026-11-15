@@ -3,7 +3,9 @@ BINARY    := $(BUILD_DIR)/bootstrap
 ZIP       := $(BUILD_DIR)/api.zip
 
 # ビルドは Go 1.27.3 の開発用コンテナで行う（docker-compose.yml の app サービス）。
-GO_RUN := docker compose run --rm -e GOOS=linux -e GOARCH=arm64 -e CGO_ENABLED=0 app
+# GOTOOLCHAIN=local: go.mod がコンテナより新しい Go を求めたとき、別のツールチェーンを
+# 自動で取得せずに失敗させる（ビルドに使う Go をコンテナのバージョンに固定するため）。
+GO_RUN := docker compose run --rm -e GOOS=linux -e GOARCH=arm64 -e CGO_ENABLED=0 -e GOTOOLCHAIN=local app
 
 .PHONY: build clean
 
