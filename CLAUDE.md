@@ -95,3 +95,13 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 ### ログ
 
 `log/slog` を使い、JSON形式で出力する（CloudWatch Logs Insights で検索できるようにするため）。
+
+### コメント（godoc）
+
+[Go Doc Comments](https://go.dev/doc/comment) と [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments#doc-comments) の慣習に従う。意味はまず名前と型で表し、コメントは名前と型で表せないことの補足に限る。
+
+- パッケージコメントは必ず書く（`// Package handler は…`）。`main` パッケージは `// Command api は…` の形にする。
+- エクスポートした識別子には doc コメントを書き、識別子名から書き始める（`// New は…`）。
+- 非公開の識別子には原則書かない。込み入ったものや、理由がコードから読み取れないもの（一時的な実装、いつ消すかなど）にだけ書く。
+- `@param` / `@return` のようなタグは使わず、文章で書く。引数や戻り値は名前でそのまま参照し、戻り値が複数で説明しにくいときは戻り値に名前を付ける。
+- 書くのは、エラーを返す条件、値の範囲や単位、`nil` やゼロ値の意味、副作用、並行に呼んでも安全かなど、使う側が知っておくべき契約。名前を言い換えるだけのコメント（`// GetWeather は天気を取得する。`）は書かない。
