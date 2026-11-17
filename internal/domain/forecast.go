@@ -9,10 +9,7 @@ import "errors"
 var ErrInvertedTemperatureRange = errors.New("max temperature is below min temperature")
 
 // Forecast は1地域・1日分の天気予報を表すエンティティ。
-// 同一性は Location と ForecastDate の組で決まり、同じ組の Forecast は
-// 取得し直して天気や気温が変わっても同じ予報として扱う。
 // 生成は NewForecast で行う。ゼロ値は有効な予報を表さない。
-// 値はすべて生成時に決まり、あとから変更できない。
 type Forecast struct {
 	location                 Location
 	date                     ForecastDate
