@@ -7,7 +7,6 @@ var ErrInvalidWeather = errors.New("invalid weather")
 
 // Weather は予報の天気区分。
 // 値は WeatherClear などの定義済みの変数か NewWeather で得る。ゼロ値は有効な天気区分を表さない。
-// 比較可能なので == や switch で比べられる。
 type Weather struct {
 	name string
 }
