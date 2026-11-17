@@ -47,7 +47,7 @@ func TestNewForecast(t *testing.T) {
 			maxTemp := mustTemperature(t, tt.max)
 			minTemp := mustTemperature(t, tt.min)
 
-			f, err := domain.NewForecast(loc, date, domain.WeatherClear, maxTemp, minTemp, precip)
+			f, err := domain.NewForecast(loc, date, domain.WeatherClear(), maxTemp, minTemp, precip)
 			if err != nil {
 				t.Fatalf("NewForecast returned error: %v", err)
 			}
@@ -57,8 +57,8 @@ func TestNewForecast(t *testing.T) {
 			if got := f.Date(); got != date {
 				t.Errorf("Date() = %v, want %v", got, date)
 			}
-			if got := f.Weather(); got != domain.WeatherClear {
-				t.Errorf("Weather() = %v, want %v", got, domain.WeatherClear)
+			if got := f.Weather(); got != domain.WeatherClear() {
+				t.Errorf("Weather() = %v, want %v", got, domain.WeatherClear())
 			}
 			if got := f.MaxTemperature(); got != maxTemp {
 				t.Errorf("MaxTemperature() = %v, want %v", got, maxTemp)
@@ -95,7 +95,7 @@ func TestNewForecast_Invalid(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := domain.NewForecast(loc, date, domain.WeatherClear, mustTemperature(t, tt.max), mustTemperature(t, tt.min), precip)
+			_, err := domain.NewForecast(loc, date, domain.WeatherClear(), mustTemperature(t, tt.max), mustTemperature(t, tt.min), precip)
 			if !errors.Is(err, domain.ErrInvertedTemperatureRange) {
 				t.Errorf("NewForecast(max=%v, min=%v) error = %v, want %v", tt.max, tt.min, err, domain.ErrInvertedTemperatureRange)
 			}

@@ -12,12 +12,12 @@ func TestNewWeather(t *testing.T) {
 		s    string
 		want domain.Weather
 	}{
-		{s: "clear", want: domain.WeatherClear},
-		{s: "cloudy", want: domain.WeatherCloudy},
-		{s: "fog", want: domain.WeatherFog},
-		{s: "rain", want: domain.WeatherRain},
-		{s: "snow", want: domain.WeatherSnow},
-		{s: "thunderstorm", want: domain.WeatherThunderstorm},
+		{s: "clear", want: domain.WeatherClear()},
+		{s: "cloudy", want: domain.WeatherCloudy()},
+		{s: "fog", want: domain.WeatherFog()},
+		{s: "rain", want: domain.WeatherRain()},
+		{s: "snow", want: domain.WeatherSnow()},
+		{s: "thunderstorm", want: domain.WeatherThunderstorm()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.s, func(t *testing.T) {
@@ -62,13 +62,12 @@ func TestWeather_String(t *testing.T) {
 		w    domain.Weather
 		want string
 	}{
-		{name: "clear", w: domain.WeatherClear, want: "clear"},
-		{name: "cloudy", w: domain.WeatherCloudy, want: "cloudy"},
-		{name: "fog", w: domain.WeatherFog, want: "fog"},
-		{name: "rain", w: domain.WeatherRain, want: "rain"},
-		{name: "snow", w: domain.WeatherSnow, want: "snow"},
-		{name: "thunderstorm", w: domain.WeatherThunderstorm, want: "thunderstorm"},
-		{name: "ゼロ値", w: domain.Weather{}, want: ""},
+		{name: "clear", w: domain.WeatherClear(), want: "clear"},
+		{name: "cloudy", w: domain.WeatherCloudy(), want: "cloudy"},
+		{name: "fog", w: domain.WeatherFog(), want: "fog"},
+		{name: "rain", w: domain.WeatherRain(), want: "rain"},
+		{name: "snow", w: domain.WeatherSnow(), want: "snow"},
+		{name: "thunderstorm", w: domain.WeatherThunderstorm(), want: "thunderstorm"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -82,12 +81,12 @@ func TestWeather_String(t *testing.T) {
 // String で得た文字列を NewWeather に渡すと元の値に戻ることを確かめる（DynamoDB への保存と復元を想定）。
 func TestWeather_RoundTrip(t *testing.T) {
 	all := []domain.Weather{
-		domain.WeatherClear,
-		domain.WeatherCloudy,
-		domain.WeatherFog,
-		domain.WeatherRain,
-		domain.WeatherSnow,
-		domain.WeatherThunderstorm,
+		domain.WeatherClear(),
+		domain.WeatherCloudy(),
+		domain.WeatherFog(),
+		domain.WeatherRain(),
+		domain.WeatherSnow(),
+		domain.WeatherThunderstorm(),
 	}
 	for _, w := range all {
 		t.Run(w.String(), func(t *testing.T) {
