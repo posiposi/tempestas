@@ -10,7 +10,7 @@ tempestas は、地域・日付を指定して天気予報を返すサーバー�
 
 - **MVPは `GET /weather` のみ。** 購読API、EventBridge（Scheduler とカスタムバス）、SQS、取得Lambda、通知Lambda、SES によるメール通知は次のフェーズで扱うため、頼まれない限り実装しない。完成形の通知フローは下記「通知フロー（次のフェーズ）」のとおり。
 - 進め方はウォーキングスケルトン方式（下記「進め方」の Step 1〜7）。まず Hello World を本番環境までデプロイし、IAM・ビルド・デプロイの経路を確立してから中身を足す。
-- 現時点では `cmd/api`（固定のJSONを返す Hello World の Lambda）、`internal/adapter/handler`、`make build`、`terraform/envs/dev`（API Gateway + Lambda の定義。スロットリングは rate 5 / burst 10）のみ実装済みで、Hello World は dev 環境にデプロイして疎通を確認済み。下記のコマンドや構成のうち未実装のものは計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
+- 現時点では `cmd/api`（固定のJSONを返す Hello World の Lambda）、`internal/adapter/handler`、`make build`、`terraform/envs/dev`（API Gateway + Lambda の定義。スロットリングは rate 5 / burst 10）、`internal/domain`（値オブジェクトとエンティティ `Forecast`）のみ実装済みで、Hello World は dev 環境にデプロイして疎通を確認済み。下記のコマンドや構成のうち未実装のものは計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
 
 ## 進め方
 
@@ -25,7 +25,7 @@ tempestas は、地域・日付を指定して天気予報を返すサーバー�
    - `make build`（`GOOS=linux GOARCH=arm64`、`bootstrap` バイナリを生成）を整備する
    - curl で疎通を確認し、IAM・ビルド・デプロイの経路を確立する
 3. **ドメインとユースケース（TDD）**
-   - `Location`、`ForecastDate`（予報範囲のバリデーションを含む）を実装する
+   - 値オブジェクト `Location`、`ForecastDate`（予報範囲のバリデーションを含む）、`Weather`、`Temperature`、`PrecipitationProbability` と、エンティティ `Forecast` を実装する（実装済み）
    - `GetWeather` ユースケース：キャッシュがあれば返し、なければ取得して保存する
    - `WeatherFetcher` / `ForecastRepository` をインターフェースとして定義し、モックでテストする
 4. **アダプタの実装**
@@ -84,7 +84,14 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 
 クリーンアーキテクチャ風のレイヤー構成。依存の向きは `adapter → usecase → domain`。
 
-- `internal/domain` — 値オブジェクト `Location`（固定リストにある地域コードのみ有効）と `ForecastDate`（YYYY-MM-DD、JSTの当日〜6日後のみ有効）、エンティティ `Forecast`。入力のバリデーションはここに置く。緯度経度ではなく地域コードで受け付けるのは、地域を値オブジェクトとしてドメインに閉じ込めるため。
+- `internal/domain` — 値オブジェクトとエンティティ。入力のバリデーションはここに置く。値1つの制約は値オブジェクト、値どうしの関係はエンティティで守る。
+  - 値オブジェクト: `Location`（固定リストにある地域コードのみ有効。予報地点の座標を持つ）、`ForecastDate`（YYYY-MM-DD、JSTの当日〜6日後のみ有効）、`Weather`（`api/openapi.yaml` の天気区分6種類）、`Temperature`（℃。NaN・±Inf は無効）、`PrecipitationProbability`（0〜100 の整数 %）。
+  - エンティティ: `Forecast`（1地域・1日分の予報）。「最高気温 ≥ 最低気温」をここで検証する。JSON への変換は持たず、handler で行う。
+  - ドメインモデルは `New〇〇()` のファクトリ関数でだけ生成する。フィールドは非公開にし、ゼロ値を直接使う前提のコードやテストは書かない。
+  - エラーはセンチネルエラーで返し、handler やアダプタが `errors.Is` で HTTP ステータスに対応付ける。利用者の入力を検証する `ErrInvalidLocation` / `ErrInvalidDate` は 400、外部APIから受け取る値を検証する `ErrInvalidTemperature` / `ErrPrecipitationProbabilityOutOfRange` / `ErrInvertedTemperatureRange` は外部APIの失敗として 502 にする。
+  - `ForecastDate` は現在時刻を引数で受け取り、`time.Now()` を直接呼ばない。JST は `time.FixedZone` の固定オフセットで表す（tzdata のない環境でも動かすため）。
+  - WMO weather code から `Weather` への変換は Open-Meteo の都合なので、ドメインではなく Open-Meteo アダプタで行う。
+  - 緯度経度ではなく地域コードで受け付けるのは、地域を値オブジェクトとしてドメインに閉じ込めるため。
 - `internal/usecase` — `GetWeather` ユースケース。ポートとして `WeatherFetcher`（外部API）と `ForecastRepository`（キャッシュ）のインターフェースを定義する。処理の流れは、キャッシュにあれば返し、なければ外部APIから取得して保存してから返す。次のフェーズの取得Lambda（EventBridge Scheduler から起動）も、地域ごとの予報をこの `GetWeather` で取得する（キャッシュを先に見る）。そのため、ユースケースに HTTP や Lambda の入口に依存する処理を入れない。通知のためのイベント（`ForecastReady`）の発行も `GetWeather` には入れない（理由は「通知フロー（次のフェーズ）」）。ユニットテストではポートをモックにする（TDDで進める）。
 - `internal/adapter/handler` — 標準 `net/http` のハンドラ。HTTPフレームワークは使わない。エラーの対応は、ドメインのバリデーションエラーを 400（`INVALID_LOCATION` / `INVALID_DATE`）、外部APIの失敗（気温・降水確率など必要な値が `null` の場合を含む）を 502（`BAD_GATEWAY`）、キャッシュ（DynamoDB）の読み書きの失敗などそれ以外のエラーを 500（`INTERNAL_SERVER_ERROR`）とする。
 - `internal/adapter/openmeteo` — Open-Meteo（APIキー不要）のクライアント。タイムアウトを必ず設定する。テストには `httptest` を使う。
