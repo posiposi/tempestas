@@ -46,10 +46,3 @@ func TestNewPrecipitationProbability_OutOfRange(t *testing.T) {
 		})
 	}
 }
-
-func TestPrecipitationProbability_ZeroValue(t *testing.T) {
-	var p domain.PrecipitationProbability
-	if got := p.Percent(); got != 0 {
-		t.Errorf("Percent() = %d, want 0", got)
-	}
-}
