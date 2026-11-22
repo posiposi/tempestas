@@ -12,13 +12,13 @@ import (
 // JST では 2026-11-17 21:00。
 var getDailyForecastTestNow = time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 
-type fakeFetcher struct {
+type fakeWeatherRepository struct {
 	forecast    domain.Forecast
 	gotLocation domain.Location
 	gotDate     domain.ForecastDate
 }
 
-func (f *fakeFetcher) Fetch(_ context.Context, location domain.Location, date domain.ForecastDate) (domain.Forecast, error) {
+func (f *fakeWeatherRepository) GetByLocationAndDate(_ context.Context, location domain.Location, date domain.ForecastDate) (domain.Forecast, error) {
 	f.gotLocation = location
 	f.gotDate = date
 	return f.forecast, nil
@@ -59,8 +59,8 @@ func TestGetDailyForecast(t *testing.T) {
 		t.Fatalf("NewForecastDate returned error: %v", err)
 	}
 	fetched := forecastFixture(t, loc, date)
-	fetcher := &fakeFetcher{forecast: fetched}
-	uc := usecase.NewGetDailyForecast(fetcher)
+	weatherRepository := &fakeWeatherRepository{forecast: fetched}
+	uc := usecase.NewGetDailyForecast(weatherRepository)
 
 	got, err := uc.Execute(context.Background(), loc, date)
 	if err != nil {
@@ -69,7 +69,7 @@ func TestGetDailyForecast(t *testing.T) {
 	if got != fetched {
 		t.Errorf("Execute() = %v, want %v", got, fetched)
 	}
-	if fetcher.gotLocation != loc || fetcher.gotDate != date {
-		t.Errorf("Fetch called with (%v, %v), want (%v, %v)", fetcher.gotLocation, fetcher.gotDate, loc, date)
+	if weatherRepository.gotLocation != loc || weatherRepository.gotDate != date {
+		t.Errorf("GetByLocationAndDate called with (%v, %v), want (%v, %v)", weatherRepository.gotLocation, weatherRepository.gotDate, loc, date)
 	}
 }
