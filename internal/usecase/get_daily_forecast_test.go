@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ var getDailyForecastTestNow = time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 
 type fakeForecastCache struct {
 	forecast    *domain.Forecast
+	getErr      error
 	saveErr     error
 	gotLocation domain.Location
 	gotDate     domain.ForecastDate
@@ -27,7 +29,7 @@ type fakeForecastCache struct {
 func (f *fakeForecastCache) GetByLocationAndDate(_ context.Context, location domain.Location, date domain.ForecastDate) (*domain.Forecast, error) {
 	f.gotLocation = location
 	f.gotDate = date
-	return f.forecast, nil
+	return f.forecast, f.getErr
 }
 
 func (f *fakeForecastCache) Save(_ context.Context, forecast domain.Forecast) error {
@@ -37,6 +39,7 @@ func (f *fakeForecastCache) Save(_ context.Context, forecast domain.Forecast) er
 
 type fakeWeatherRepository struct {
 	forecast    domain.Forecast
+	err         error
 	called      bool
 	gotLocation domain.Location
 	gotDate     domain.ForecastDate
@@ -46,7 +49,7 @@ func (f *fakeWeatherRepository) GetByLocationAndDate(_ context.Context, location
 	f.called = true
 	f.gotLocation = location
 	f.gotDate = date
-	return f.forecast, nil
+	return f.forecast, f.err
 }
 
 func forecastFixture(t *testing.T, location domain.Location, date domain.ForecastDate, weatherName string) domain.Forecast {
@@ -169,5 +172,42 @@ func TestGetDailyForecast_SaveFailed(t *testing.T) {
 	}
 	if record.Level != slog.LevelError.String() {
 		t.Errorf("log level = %q, want %q", record.Level, slog.LevelError.String())
+	}
+}
+
+func TestGetDailyForecast_CacheGetFailed(t *testing.T) {
+	loc, date := locationAndDateFixture(t)
+	getErr := errors.New("cache unavailable")
+	forecastCache := &fakeForecastCache{getErr: getErr}
+	weatherRepository := &fakeWeatherRepository{forecast: forecastFixture(t, loc, date, "clear")}
+	uc := usecase.NewGetDailyForecast(forecastCache, weatherRepository, newTestLogger(&bytes.Buffer{}))
+
+	_, err := uc.Execute(context.Background(), loc, date)
+	if !errors.Is(err, getErr) {
+		t.Errorf("Execute() error = %v, want %v", err, getErr)
+	}
+	if errors.Is(err, usecase.ErrFetchFailed) {
+		t.Errorf("Execute() error = %v, must not be %v", err, usecase.ErrFetchFailed)
+	}
+	if weatherRepository.called {
+		t.Error("WeatherRepository.GetByLocationAndDate was called, want not called when the cache read fails")
+	}
+	if forecastCache.saved != nil {
+		t.Errorf("ForecastCache.Save called with %v, want not called when the cache read fails", *forecastCache.saved)
+	}
+}
+
+func TestGetDailyForecast_FetchFailed(t *testing.T) {
+	loc, date := locationAndDateFixture(t)
+	forecastCache := &fakeForecastCache{}
+	weatherRepository := &fakeWeatherRepository{err: fmt.Errorf("%w: status 503", usecase.ErrFetchFailed)}
+	uc := usecase.NewGetDailyForecast(forecastCache, weatherRepository, newTestLogger(&bytes.Buffer{}))
+
+	_, err := uc.Execute(context.Background(), loc, date)
+	if !errors.Is(err, usecase.ErrFetchFailed) {
+		t.Errorf("Execute() error = %v, want %v", err, usecase.ErrFetchFailed)
+	}
+	if forecastCache.saved != nil {
+		t.Errorf("ForecastCache.Save called with %v, want not called when the fetch fails", *forecastCache.saved)
 	}
 }

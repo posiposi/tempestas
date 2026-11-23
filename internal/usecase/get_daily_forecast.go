@@ -4,10 +4,18 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/posiposi/tempestas/internal/domain"
 )
+
+// ErrFetchFailed は外部 API から予報を取得できなかったことを表すエラー。
+// WeatherRepository の実装は、通信の失敗、異常なステータス、必要な値の欠落、
+// 受け取った値がドメインの検証を通らない場合など、外部 API に起因する失敗をこのエラーで包んで返す。
+// ドメインのエラーを包む場合は fmt.Errorf("%w: %w", ErrFetchFailed, err) のように両方を包み、
+// どちらでも errors.Is で判別できるようにする。
+var ErrFetchFailed = errors.New("failed to fetch forecast")
 
 // ForecastCache は取得済みの天気予報を保持するキャッシュのポート。
 type ForecastCache interface {
@@ -22,6 +30,7 @@ type ForecastCache interface {
 type WeatherRepository interface {
 	// GetByLocationAndDate は location の date の予報を外部 API から取得する。
 	// キャッシュは使わず呼ぶたびに外部 API にアクセスする。
+	// 取得に失敗した場合は ErrFetchFailed を包んだエラーを返す。
 	GetByLocationAndDate(ctx context.Context, location domain.Location, date domain.ForecastDate) (domain.Forecast, error)
 }
 
