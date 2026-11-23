@@ -40,8 +40,12 @@ type Client struct {
 }
 
 // NewClient は baseURL（末尾のスラッシュなし。本番では DefaultBaseURL）にリクエストする Client を返す。
-// timeout は1回のリクエストのタイムアウトで正の値を渡す（通常は DefaultTimeout）。
+// timeout は1回のリクエストのタイムアウトで、0 以下の場合は DefaultTimeout を使う
+// （http.Client はタイムアウトが 0 だと無制限に待つため、タイムアウトなしにはできないようにする）。
 func NewClient(baseURL string, timeout time.Duration) *Client {
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
 	return &Client{
 		httpClient: &http.Client{Timeout: timeout},
 		baseURL:    baseURL,
