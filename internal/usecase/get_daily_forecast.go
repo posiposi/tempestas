@@ -43,9 +43,9 @@ func NewGetDailyForecast(forecastCache ForecastCache, weatherRepository WeatherR
 // Execute は location の date の予報を返す。
 // キャッシュにあればそれを返し、weatherRepository は呼ばない。
 // なければ weatherRepository から取得し、キャッシュに保存してから返す。
-// キャッシュの読み込みと weatherRepository が返したエラーはそのまま返す。
+// キャッシュの読み込みに失敗した場合は外部 API の呼び出しが増えるのを避けるため weatherRepository は呼ばずにそのエラーを返す。
+// weatherRepository が返したエラーはそのまま返す。
 // キャッシュへの保存に失敗した場合は予報は取得できているのでエラーにせずログを出して予報を返す。
-// キャッシュの読み込みに失敗した場合は外部 API の呼び出しが増えるのを避けるためweatherRepository は呼ばない。
 func (u *GetDailyForecast) Execute(ctx context.Context, location domain.Location, date domain.ForecastDate) (domain.Forecast, error) {
 	cached, err := u.forecastCache.GetByLocationAndDate(ctx, location, date)
 	if err != nil {
