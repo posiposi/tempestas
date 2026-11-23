@@ -53,7 +53,7 @@ API Gateway はREST API ではなく HTTP API を使用します。
 依存の向きを `adapter → usecase → domain` にしたクリーンアーキテクチャ指向の構成です。
 
 - Lambda（`cmd/api`）とローカルのサーバー（`cmd/local`）は同じ `http.Handler` を使います。Lambda 専用の処理をハンドラに入れないことでローカルでも本番と同じコードを動かせます。
-- 予報を取得するユースケース（`GetWeather`）はキャッシュを先に見て、キャッシュが存在しなければ Open-Meteo から取得して保存します。次のフェーズで追加する取得 Lambda も同様のユースケースを使います。通知のためのイベントの発行はユースケースに入れず、取得 Lambda が受け持ちます（[イベントの意味](#イベントの意味を取得したではなく用意できたにする)）。
+- 予報を取得するユースケース（`GetDailyForecast`）はキャッシュを先に見て、キャッシュが存在しなければ Open-Meteo から取得して保存します。次のフェーズで追加する取得 Lambda も同様のユースケースを使います。通知のためのイベントの発行はユースケースに入れず、取得 Lambda が受け持ちます（[イベントの意味](#イベントの意味を取得したではなく用意できたにする)）。
 
 #### API Gateway の種類に依存しない
 
@@ -64,7 +64,7 @@ API Gateway が Lambda に渡すイベントの形式はHTTP API（ペイロー�
 | 変わるもの | 変わらないもの |
 |---|---|
 | `cmd/api` のイベントの変換（1行） | ハンドラ（`internal/adapter/handler`） |
-| Terraform の API Gateway の定義 | ユースケース（`GetWeather`）とそのポート |
+| Terraform の API Gateway の定義 | ユースケース（`GetDailyForecast`）とそのポート |
 | | ドメイン（`Location`、`ForecastDate`、`Forecast`） |
 | | ローカルのサーバー（`cmd/local`） |
 | | API 仕様（`api/openapi.yaml`） |
@@ -155,7 +155,7 @@ API Gateway が Lambda に渡すイベントの形式はHTTP API（ペイロー�
 
 ### イベントの意味を「取得した」ではなく「用意できた」にする
 
-`GetWeather` はキャッシュを先に見るため、朝より前に誰かが `GET /weather` で同じ地域と日付を呼んでいると、Open-Meteo からの取得は起きません。「Open-Meteo から取得した」ときにイベントを発行すると、その日は通知が届かなくなります。
+`GetDailyForecast` はキャッシュを先に見るため、朝より前に誰かが `GET /weather` で同じ地域と日付を呼んでいると、Open-Meteo からの取得は起きません。「Open-Meteo から取得した」ときにイベントを発行すると、その日は通知が届かなくなります。
 
 そのためイベントはユースケースの中では発行せず、取得 Lambda が予報を手に入れたあとに、キャッシュから取ったかどうかに関係なく発行します。ユースケースを HTTP や Lambda の入口に依存させないという方針とも一致します。
 

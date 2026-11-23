@@ -10,7 +10,7 @@ tempestas は、地域・日付を指定して天気予報を返すサーバー�
 
 - **MVPは `GET /weather` のみ。** 購読API、EventBridge（Scheduler とカスタムバス）、SQS、取得Lambda、通知Lambda、SES によるメール通知は次のフェーズで扱うため、頼まれない限り実装しない。完成形の通知フローは下記「通知フロー（次のフェーズ）」のとおり。
 - 進め方はウォーキングスケルトン方式（下記「進め方」の Step 1〜7）。まず Hello World を本番環境までデプロイし、IAM・ビルド・デプロイの経路を確立してから中身を足す。
-- 現時点では `cmd/api`（固定のJSONを返す Hello World の Lambda）、`internal/adapter/handler`、`make build`、`terraform/envs/dev`（API Gateway + Lambda の定義。スロットリングは rate 5 / burst 10）、`internal/domain`（値オブジェクトとエンティティ `Forecast`）のみ実装済みで、Hello World は dev 環境にデプロイして疎通を確認済み。下記のコマンドや構成のうち未実装のものは計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
+- 現時点では `cmd/api`（固定のJSONを返す Hello World の Lambda）、`internal/adapter/handler`、`make build`、`terraform/envs/dev`（API Gateway + Lambda の定義。スロットリングは rate 5 / burst 10）、`internal/domain`（値オブジェクトとエンティティ `Forecast`）、`internal/usecase`（ユースケース `GetDailyForecast` と、ポート `ForecastCache` / `WeatherRepository`）のみ実装済みで、Hello World は dev 環境にデプロイして疎通を確認済み。下記のコマンドや構成のうち未実装のものは計画段階のもので、実装したら実際の内容に合わせてこのファイルを更新する。
 
 ## 進め方
 
@@ -26,11 +26,11 @@ tempestas は、地域・日付を指定して天気予報を返すサーバー�
    - curl で疎通を確認し、IAM・ビルド・デプロイの経路を確立する
 3. **ドメインとユースケース（TDD）**
    - 値オブジェクト `Location`、`ForecastDate`（予報範囲のバリデーションを含む）、`Weather`、`Temperature`、`PrecipitationProbability` と、エンティティ `Forecast` を実装する（実装済み）
-   - `GetWeather` ユースケース：キャッシュがあれば返し、なければ取得して保存する
-   - `WeatherFetcher` / `ForecastRepository` をインターフェースとして定義し、モックでテストする
+   - `GetDailyForecast` ユースケース：キャッシュがあれば返し、なければ取得して保存する
+   - `ForecastCache` / `WeatherRepository` をインターフェースとして定義し、モックでテストする
 4. **アダプタの実装**
    - Open-Meteo クライアント（タイムアウトを設定し、`httptest` でテスト）
-   - DynamoDB リポジトリ（testcontainers で結合テスト、TTL 属性を設定）
+   - DynamoDB のキャッシュ（testcontainers で結合テスト、TTL 属性を設定）
    - HTTP ハンドラ（バリデーションエラーは 400、外部APIのエラーは 502）
 5. **組み立てと再デプロイ**
    - Terraform に DynamoDB テーブル（TTL 有効）と最小権限の IAM ポリシーを追加する
@@ -82,22 +82,28 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 
 ## アーキテクチャ
 
-クリーンアーキテクチャ風のレイヤー構成。依存の向きは `adapter → usecase → domain`。
+クリーンアーキテクチャ風のレイヤー構成。依存の向きは「アダプタ → ユースケース → ドメイン」で、内側のレイヤーは外側を知らない。
 
-- `internal/domain` — 値オブジェクトとエンティティ。入力のバリデーションはここに置く。値1つの制約は値オブジェクト、値どうしの関係はエンティティで守る。
-  - 値オブジェクト: `Location`（固定リストにある地域コードのみ有効。予報地点の座標を持つ）、`ForecastDate`（YYYY-MM-DD、JSTの当日〜6日後のみ有効）、`Weather`（`api/openapi.yaml` の天気区分6種類）、`Temperature`（℃。NaN・±Inf は無効）、`PrecipitationProbability`（0〜100 の整数 %）。
-  - エンティティ: `Forecast`（1地域・1日分の予報）。「最高気温 ≥ 最低気温」をここで検証する。JSON への変換は持たず、handler で行う。
-  - ドメインモデルは `New〇〇()` のファクトリ関数でだけ生成する。フィールドは非公開にし、ゼロ値を直接使う前提のコードやテストは書かない。
-  - エラーはセンチネルエラーで返し、handler やアダプタが `errors.Is` で HTTP ステータスに対応付ける。利用者の入力を検証する `ErrInvalidLocation` / `ErrInvalidDate` は 400、外部APIから受け取る値を検証する `ErrInvalidTemperature` / `ErrPrecipitationProbabilityOutOfRange` / `ErrInvertedTemperatureRange` は外部APIの失敗として 502 にする。
-  - `ForecastDate` は現在時刻を引数で受け取り、`time.Now()` を直接呼ばない。JST は `time.FixedZone` の固定オフセットで表す（tzdata のない環境でも動かすため）。
-  - WMO weather code から `Weather` への変換は Open-Meteo の都合なので、ドメインではなく Open-Meteo アダプタで行う。
-  - 緯度経度ではなく地域コードで受け付けるのは、地域を値オブジェクトとしてドメインに閉じ込めるため。
-- `internal/usecase` — `GetWeather` ユースケース。ポートとして `WeatherFetcher`（外部API）と `ForecastRepository`（キャッシュ）のインターフェースを定義する。処理の流れは、キャッシュにあれば返し、なければ外部APIから取得して保存してから返す。次のフェーズの取得Lambda（EventBridge Scheduler から起動）も、地域ごとの予報をこの `GetWeather` で取得する（キャッシュを先に見る）。そのため、ユースケースに HTTP や Lambda の入口に依存する処理を入れない。通知のためのイベント（`ForecastReady`）の発行も `GetWeather` には入れない（理由は「通知フロー（次のフェーズ）」）。ユニットテストではポートをモックにする（TDDで進める）。
-- `internal/adapter/handler` — 標準 `net/http` のハンドラ。HTTPフレームワークは使わない。エラーの対応は、ドメインのバリデーションエラーを 400（`INVALID_LOCATION` / `INVALID_DATE`）、外部APIの失敗（気温・降水確率など必要な値が `null` の場合を含む）を 502（`BAD_GATEWAY`）、キャッシュ（DynamoDB）の読み書きの失敗などそれ以外のエラーを 500（`INTERNAL_SERVER_ERROR`）とする。
-- `internal/adapter/openmeteo` — Open-Meteo（APIキー不要）のクライアント。タイムアウトを必ず設定する。テストには `httptest` を使う。
-- `internal/adapter/dynamodb` — `aws-sdk-go-v2` で実装するリポジトリ。
-- `cmd/api`（Lambdaエントリポイント）と `cmd/local`（ローカル用HTTPサーバー）は、**同じ `http.Handler`** を使う。Lambda では `aws-lambda-go-api-proxy` で包む。Lambda 専用のロジックをハンドラに入れないこと。
-- `api/openapi.yaml` — APIの仕様はここを正とし、仕様を先に決めてから実装する。エンドポイントやレスポンスを変えるときは、OpenAPIを先に更新する。
+- **ドメイン** — 値オブジェクトとエンティティ。入力のバリデーションはここに置く。
+  - 値1つの制約は値オブジェクト、値どうしの関係はエンティティで守る。
+  - ドメインモデルはファクトリ関数でだけ生成する。フィールドは非公開にし、ゼロ値を直接使う前提のコードやテストは書かない。
+  - エラーはセンチネルエラーで返し、外側のレイヤーが `errors.Is` で判別する。利用者の入力を検証するエラーと、外部APIから受け取った値を検証するエラーは区別できるようにする。
+  - 現在時刻は引数で受け取り、ドメインの中で取得しない。タイムゾーンは tzdata に依存しない固定オフセットで表す。
+  - 外部APIの表現（コード値など）からドメインの値への変換は外部APIの都合なので、ドメインではなくアダプタで行う。
+  - 外部からの入力は座標などの生の値ではなく、ドメインで定めた識別子（地域コードなど）で受け付け、値オブジェクトに閉じ込める。
+- **ユースケース** — アプリケーションの処理の流れ。外部APIとキャッシュはポート（インターフェース）として、使う側であるユースケースに定義し、アダプタが実装する。
+  - 外部APIの呼び出しには料金がかかるため、呼び出し回数を抑えることを要件とし、キャッシュを使うかの判断はユースケースで行う。キャッシュにあれば外部APIを呼ばずに返し、なければ外部APIから取得してキャッシュに保存してから返す。
+  - キャッシュの読み込みに失敗したときは、外部APIの呼び出しが増えるのを避けるため、外部APIは呼ばずにエラーを返す。
+  - キャッシュへの保存に失敗したときは、予報は取得できているのでエラーにせず、エラーレベルのログを出して予報を返す。
+  - キャッシュの保存先やその技術（期限の設定方法など）はアダプタの都合なので、ユースケースは知らない。
+  - APIの入口からも次のフェーズのバッチ（定期実行）からも同じユースケースを呼ぶため、HTTP や Lambda などの入口に依存する処理を入れない。通知のためのイベントの発行もユースケースには入れない（理由は「通知フロー（次のフェーズ）」）。
+  - ユニットテストではポートを偽物に差し替える（TDDで進める）。
+- **アダプタ** — 入口（HTTP ハンドラ）と、ポートの実装（外部APIのクライアント、キャッシュ）。
+  - HTTP ハンドラは標準ライブラリで書き、HTTPフレームワークは使わない。ユースケースは、ハンドラ側に定義した非公開のインターフェース越しに呼ぶ。
+  - エラーと HTTP ステータスの対応は、利用者の入力のバリデーションエラーを 400、外部APIの失敗（必要な値が欠けている場合や、受け取った値がドメインの検証を通らない場合を含む）を 502、キャッシュの読み書きの失敗などそれ以外を 500 とする。
+  - 外部APIのクライアントには必ずタイムアウトを設定し、テストではスタブのHTTPサーバーを使う。
+- **エントリポイント** — Lambda とローカル用のサーバーは同じ HTTP ハンドラを使う。Lambda のイベントの変換はエントリポイントに閉じ込め、Lambda 専用のロジックをハンドラに入れない。
+- **API仕様** — OpenAPI の定義を正とし、仕様を先に決めてから実装する。エンドポイントやレスポンスを変えるときは、OpenAPI を先に更新する。
 
 ### DynamoDB
 
@@ -111,14 +117,14 @@ DynamoDB の結合テストは testcontainers（DynamoDB Local）を使うため
 完成形は**イベント駆動**で、その日の予報が用意できたタイミングで購読者に通知する。構成図は `docs/full-architecture.drawio`（README には書き出した `docs/full-architecture.svg` を載せる）。
 
 1. EventBridge Scheduler が毎朝、取得Lambdaを起動する。
-2. 取得Lambdaは対応しているすべての地域について、その日の予報を地域ごとに1回だけ `GetWeather` で用意し、地域ごとに `ForecastReady`（`location`、`date` と予報の中身）を EventBridge のカスタムバスに発行する。
+2. 取得Lambdaは対応しているすべての地域について、その日の予報を地域ごとに1回だけ `GetDailyForecast` で用意し、地域ごとに `ForecastReady`（`location`、`date` と予報の中身）を EventBridge のカスタムバスに発行する。
 3. EventBridge のルールがイベントを SQS（DLQ 付き）に送る。
 4. 通知Lambdaはイベントの地域の購読者を DynamoDB から `Query` し、購読者1人ずつ SES（`SendEmail`）でメールを送る。
 
 - 取得Lambdaは購読者も通知先も知らない。誰にどう通知するかはイベントを受け取る側が決める。受け取る処理を増やすときはルールを足し、取得Lambdaは変えない。
 - 取得Lambdaは購読情報を読まない。購読されている地域だけに絞らず、固定リストのすべての地域のイベントを発行する。購読者がいない地域は通知Lambdaが何もせずに終える。
 - イベントに予報の中身を入れるので、通知Lambdaは予報のキャッシュを読まない（TTL で消えたあとに再処理されても困らないようにするため）。
-- `ForecastReady` の意味は「その日の予報が用意できた」であり、「外部APIから取得した」ではない。`GetWeather` はキャッシュを先に見るので、事前に `GET /weather` が呼ばれていると外部APIへの取得が起きない。そのためイベントはユースケースの中ではなく、取得Lambdaが予報を手に入れたあとに、キャッシュから取ったかどうかに関係なく発行する。
+- `ForecastReady` の意味は「その日の予報が用意できた」であり、「外部APIから取得した」ではない。`GetDailyForecast` はキャッシュを先に見るので、事前に `GET /weather` が呼ばれていると外部APIへの取得が起きない。そのためイベントはユースケースの中ではなく、取得Lambdaが予報を手に入れたあとに、キャッシュから取ったかどうかに関係なく発行する。
 - 通知Lambdaは1つのイベントで地域の購読者全員に送るので、再配信（EventBridge と SQS は少なくとも1回の配信）に備えて購読ID + 日付の冪等キーで二重送信を防ぐ。購読者ごとに「冪等キーがあればスキップ → SES で送信 → 冪等キーを記録（TTL 付き）」の順で処理する。記録を送信のあとにするのは、送信に失敗した購読者に届かなくなるのを避けるため（二重に届くのは送信と記録の間で止まったときだけ）。
 - 宛先は1通に全員を入れず、購読者1人ずつ送る（アドレスを互いに見せないためと、冪等キーを購読者ごとに記録するため）。
 - Slack への通知は行わない。
