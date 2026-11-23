@@ -76,17 +76,7 @@ components:
 
     Weather:
       type: string
-      description: |
-        天気区分。Open-Meteo の WMO weather code から変換する。
-
-        | 値 | WMO code |
-        |---|---|
-        | `clear` | 0 |
-        | `cloudy` | 1, 2, 3 |
-        | `fog` | 45, 48 |
-        | `rain` | 51–67, 80–82 |
-        | `snow` | 71–77, 85, 86 |
-        | `thunderstorm` | 95, 96, 99 |
+      description: 天気区分。
       enum: [clear, cloudy, fog, rain, snow, thunderstorm]
 
     Forecast:
