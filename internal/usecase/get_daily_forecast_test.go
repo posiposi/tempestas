@@ -1,7 +1,11 @@
 package usecase_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -14,14 +18,21 @@ var getDailyForecastTestNow = time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 
 type fakeForecastCache struct {
 	forecast    *domain.Forecast
+	saveErr     error
 	gotLocation domain.Location
 	gotDate     domain.ForecastDate
+	saved       *domain.Forecast
 }
 
 func (f *fakeForecastCache) GetByLocationAndDate(_ context.Context, location domain.Location, date domain.ForecastDate) (*domain.Forecast, error) {
 	f.gotLocation = location
 	f.gotDate = date
 	return f.forecast, nil
+}
+
+func (f *fakeForecastCache) Save(_ context.Context, forecast domain.Forecast) error {
+	f.saved = &forecast
+	return f.saveErr
 }
 
 type fakeWeatherRepository struct {
@@ -76,12 +87,16 @@ func locationAndDateFixture(t *testing.T) (domain.Location, domain.ForecastDate)
 	return loc, date
 }
 
+func newTestLogger(buf *bytes.Buffer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(buf, nil))
+}
+
 func TestGetDailyForecast_CacheHit(t *testing.T) {
 	loc, date := locationAndDateFixture(t)
 	cached := forecastFixture(t, loc, date, "clear")
 	forecastCache := &fakeForecastCache{forecast: &cached}
 	weatherRepository := &fakeWeatherRepository{}
-	uc := usecase.NewGetDailyForecast(forecastCache, weatherRepository)
+	uc := usecase.NewGetDailyForecast(forecastCache, weatherRepository, newTestLogger(&bytes.Buffer{}))
 
 	got, err := uc.Execute(context.Background(), loc, date)
 	if err != nil {
@@ -96,6 +111,9 @@ func TestGetDailyForecast_CacheHit(t *testing.T) {
 	if weatherRepository.called {
 		t.Error("WeatherRepository.GetByLocationAndDate was called, want not called on cache hit")
 	}
+	if forecastCache.saved != nil {
+		t.Errorf("ForecastCache.Save called with %v, want not called on cache hit", *forecastCache.saved)
+	}
 }
 
 func TestGetDailyForecast_CacheMiss(t *testing.T) {
@@ -103,7 +121,7 @@ func TestGetDailyForecast_CacheMiss(t *testing.T) {
 	fetched := forecastFixture(t, loc, date, "rain")
 	forecastCache := &fakeForecastCache{}
 	weatherRepository := &fakeWeatherRepository{forecast: fetched}
-	uc := usecase.NewGetDailyForecast(forecastCache, weatherRepository)
+	uc := usecase.NewGetDailyForecast(forecastCache, weatherRepository, newTestLogger(&bytes.Buffer{}))
 
 	got, err := uc.Execute(context.Background(), loc, date)
 	if err != nil {
@@ -117,5 +135,39 @@ func TestGetDailyForecast_CacheMiss(t *testing.T) {
 	}
 	if weatherRepository.gotLocation != loc || weatherRepository.gotDate != date {
 		t.Errorf("WeatherRepository.GetByLocationAndDate called with (%v, %v), want (%v, %v)", weatherRepository.gotLocation, weatherRepository.gotDate, loc, date)
+	}
+	if forecastCache.saved == nil {
+		t.Fatal("ForecastCache.Save was not called, want called with the fetched forecast")
+	}
+	if *forecastCache.saved != fetched {
+		t.Errorf("ForecastCache.Save called with %v, want %v", *forecastCache.saved, fetched)
+	}
+}
+
+// 保存に失敗しても取得した予報は返し、失敗はエラーレベルのログに残す。
+func TestGetDailyForecast_SaveFailed(t *testing.T) {
+	loc, date := locationAndDateFixture(t)
+	fetched := forecastFixture(t, loc, date, "snow")
+	forecastCache := &fakeForecastCache{saveErr: errors.New("cache unavailable")}
+	weatherRepository := &fakeWeatherRepository{forecast: fetched}
+	var logs bytes.Buffer
+	uc := usecase.NewGetDailyForecast(forecastCache, weatherRepository, newTestLogger(&logs))
+
+	got, err := uc.Execute(context.Background(), loc, date)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if got != fetched {
+		t.Errorf("Execute() = %v, want %v", got, fetched)
+	}
+
+	var record struct {
+		Level string `json:"level"`
+	}
+	if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
+		t.Fatalf("want one JSON log record, got %q: %v", logs.String(), err)
+	}
+	if record.Level != slog.LevelError.String() {
+		t.Errorf("log level = %q, want %q", record.Level, slog.LevelError.String())
 	}
 }
